@@ -1,4 +1,4 @@
-# 🤖 Reddit Thread Summarizer Automation 🧵  
+# 🤖 Reddit Thread Summarizer 
 
 An **end-to-end automation system** built using **n8n**, this project automatically summarizes Reddit threads and delivers concise summaries via **Telegram**, while storing all processed data into **Google Sheets** for tracking and analysis.  
 
