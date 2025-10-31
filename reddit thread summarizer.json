@@ -1,0 +1,859 @@
+{
+  "name": "reddit thread summarizer",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        112,
+        0
+      ],
+      "id": "2ba1d5ab-46bf-48f8-900c-b1d94239528d",
+      "name": "Telegram Trigger",
+      "webhookId": "afaf0caf-5de7-46ad-a6a7-335d5d9b5f76",
+      "credentials": {
+        "telegramApi": {
+          "id": "3LolPHAL8KvbTV1Y",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "909ca6b8-074f-4a75-922a-983fe60e8e67",
+              "name": "=url",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        288,
+        0
+      ],
+      "id": "9923f49f-d6e1-47d3-8a9c-5b3be6b49fbc",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json[\"url\"].replace(\"https://www.reddit.com\", \"https://oauth.reddit.com\") + \".json?limit=500&depth=10&raw_json=1\" }}\n\n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "redditOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-bot/1.0 (by u/Crazy_Selection7262)"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        0
+      ],
+      "id": "293240d4-d7f9-42eb-9455-8d4c6152aa7b",
+      "name": "HTTP Request1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "kAtmjrjmOvBs5012",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get Reddit API response (the array with post + comments)\nconst response = $input.all();\n\n// Find the listing that actually has comments (t1 type)\nlet commentsRoot = [];\nfor (const block of response) {\n  const children = block.json?.data?.children;\n  if (Array.isArray(children) && children.some(c => c.kind === \"t1\")) {\n    commentsRoot = children;\n    break;\n  }\n}\n\n// If no comments found, return an error message\nif (!commentsRoot.length) {\n  return [{ json: { error: \"No comment data found. Check Reddit response.\" } }];\n}\n\n// Recursive function to collect all comments\nfunction extractComments(nodes) {\n  const all = [];\n\n  for (const node of nodes) {\n    const d = node.data;\n    if (!d) continue;\n\n    // Only include actual comments\n    if (d.body) {\n      all.push({\n        author: d.author,\n        comment: d.body,\n        upvotes: d.ups ?? 0,\n        permalink: `https://reddit.com${d.permalink}`,\n      });\n    }\n\n    // Recurse into nested replies\n    if (d.replies && d.replies.data && Array.isArray(d.replies.data.children)) {\n      all.push(...extractComments(d.replies.data.children));\n    }\n  }\n\n  return all;\n}\n\n// Extract all nested comments\nconst allComments = extractComments(commentsRoot);\n\n// If nothing was extracted\nif (!allComments.length) {\n  return [{ json: { error: \"No comments extracted from Reddit.\" } }];\n}\n\n// Return all comments as separate items\nreturn allComments.map(c => ({ json: c }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "a3d7d8be-ab4e-4b10-b594-9288fbc6e410",
+      "name": "Fetch reddit comments"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🧠 Thread-Aware Chunking into 3 Groups for LLMs\n\nconst allComments = items.map(item => item.json);\n\n// safety check\nif (!allComments.length) {\n  return [{ json: { error: \"No comments found to split.\" } }];\n}\n\n// Sort by upvotes (optional, keeps top comments grouped)\nallComments.sort((a, b) => b.upvotes - a.upvotes);\n\n// number of groups (you can change this later)\nconst NUM_GROUPS = 3;\nconst groupSize = Math.ceil(allComments.length / NUM_GROUPS);\n\nconst groupedOutputs = [];\nfor (let i = 0; i < NUM_GROUPS; i++) {\n  const start = i * groupSize;\n  const end = start + groupSize;\n  const chunk = allComments.slice(start, end);\n\n  if (chunk.length > 0) {\n    groupedOutputs.push({\n      json: {\n        group_id: i + 1,\n        comments: chunk,\n        comment_count: chunk.length,\n      },\n    });\n  }\n}\n\n// return 3 separate outputs (LLM1, LLM2, LLM3)\nreturn groupedOutputs;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "10ed872e-3714-4fba-b193-fbd09e0a59a8",
+      "name": "split comments"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert summarizer. Summarize the following Reddit comments in a clear, concise paragraph (3–5 sentences). Focus on the key themes, advice, and tone expressed by the commenters.\n\nComments:\n{{ $json.comments.map(c => \"- \" + c.comment).join(\"\\n\") }}\n\nIf distinct insights appear, include short bullet points for them.\n"
+            }
+          ]
+        },
+        "options": {
+          "systemMessage": ""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        -272
+      ],
+      "id": "08106aa9-c799-436c-bb41-877d8833f1b9",
+      "name": "llm 1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "d9uUiQcnurT6RcKu",
+          "name": "Google Gemini(PaLM) Api account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Summarize the following Reddit comments:\n\n{{ $json.comments.map(c => c.comment).join(\"\\n\\n\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        -16
+      ],
+      "id": "e1ed8c91-da79-4efe-b39a-561956d2a5c3",
+      "name": "llm 2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "X0vVHYchj2BiiBEU",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0316811e-fde1-43df-9daa-7fd149ebd4dd",
+              "leftValue": "={{ $json.group_id }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        -256
+      ],
+      "id": "0264e22a-e6e7-405a-b62c-0d9af4568356",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ed8a2108-74e7-4a72-a345-07241c0c0920",
+              "leftValue": "={{ $json.group_id }}",
+              "rightValue": 2,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        0
+      ],
+      "id": "fdea90a4-7acf-4566-ba82-bdadd09116ca",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6b17bedb-4f41-4f1b-8caa-3188dc5db512",
+              "leftValue": "={{ $json.group_id }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        224
+      ],
+      "id": "eb38b72d-5b3c-4f36-b244-1c7cc5b588a5",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "780c4256-ff0f-4b56-bb9f-f65442901587",
+              "name": "=combined_text",
+              "value": "={{ $json[\"content\"][\"parts\"][0][\"text\"] + \"\\n\\n\" + $json[\"message\"][\"content\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2512,
+        192
+      ],
+      "id": "c5a8c2df-2fb6-4c77-a625-449984e42367",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2000,
+        -32
+      ],
+      "id": "62311deb-8f3b-4d41-8616-6edc5c29311e",
+      "name": "Merge llm 1 and llm 2"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2224,
+        192
+      ],
+      "id": "a944b1d4-0ace-4da4-bfe8-a2bf5ad64dbc",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Summarize the following Reddit comments:\n\n{{ $json.comments.map(c => c.comment).join(\"\\n\\n\") }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1616,
+        208
+      ],
+      "id": "dde901e0-b859-4fd1-a5ee-bc8ba4a98b59",
+      "name": " llm 3",
+      "credentials": {
+        "openAiApi": {
+          "id": "JNQlvoo31Be9RPL6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Summarize the following combined user insights in 6  sentences:\n{{$json.combined_text}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2720,
+        192
+      ],
+      "id": "29a95b82-7191-4874-869f-0076a9a2a064",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "JNQlvoo31Be9RPL6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3360,
+        352
+      ],
+      "id": "4f7114dd-b26c-465f-9abc-c725a67bb439",
+      "name": "Send a text message",
+      "webhookId": "dfdb3c07-64d8-4d99-b8dd-098a92b559b2",
+      "credentials": {
+        "telegramApi": {
+          "id": "3LolPHAL8KvbTV1Y",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json[\"url\"].replace(\"https://www.reddit.com\", \"https://oauth.reddit.com\") + \".json?limit=1&raw_json=1\" }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "redditOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        368
+      ],
+      "id": "ef6b96bd-0705-4b06-be18-3f1b5ff0723f",
+      "name": "HTTP Request",
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "kAtmjrjmOvBs5012",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      post_title: items[0].json.data.children[0].data.title,\n      post_content: items[0].json.data.children[0].data.selftext\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        368
+      ],
+      "id": "de77dab8-5345-4256-933d-d597127ed4cb",
+      "name": "fetch title and post"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Summarize the following Reddit post 3 lines. Title: {{ $json.post_title }} Content: {{ $json.post_content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        960,
+        368
+      ],
+      "id": "675f62f7-131f-4b03-bf75-8174f790d996",
+      "name": "Message a model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "7xrUyx2wxJNPTJDb",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2976,
+        352
+      ],
+      "id": "820182e2-32dd-4ac6-a866-8d1e2a93ba67",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract both summaries safely\nconst postSummary = $json?.content?.parts?.[0]?.text || \"No post summary found.\";\nconst commentSummary = $json?.message?.content || \"No comment summary found.\";\n\n// Format message for Telegram\nconst finalMessage = `📝 *Post Summary:*\\n${postSummary}\\n\\n💬 *Comments Summary:*\\n${commentSummary}`;\n\nreturn [\n  {\n    json: {\n      message: finalMessage\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3184,
+        352
+      ],
+      "id": "f4d94553-0e4e-4050-80f4-a0cb1b0bf999",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1nT9KW_IER7-hhAoQ4bm1g4m8v9qnnOKnFtD2dPcyaYg"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "data",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post title": "={{ $node[\"fetch title and post\"].json[\"post_title\"] }}",
+            "Timestamp": "={{ new Date().toISOString().slice(0,10) }}",
+            "subreddit": "={{ $node[\"HTTP Request\"].json[\"data\"][\"children\"][0][\"data\"][\"subreddit\"] }}",
+            "Thread summary": "={{ $json.result.text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Post title",
+              "displayName": "Post title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "subreddit",
+              "displayName": "subreddit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Thread summary",
+              "displayName": "Thread summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3568,
+        352
+      ],
+      "id": "9d89e7fd-c46a-4a12-a143-13a3172ddf75",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "gqXHk4RnAbgeoZDo",
+          "name": "Google Sheets account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Fetch reddit comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch reddit comments": {
+      "main": [
+        [
+          {
+            "node": "split comments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "split comments": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "llm 1": {
+      "main": [
+        [
+          {
+            "node": "Merge llm 1 and llm 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "llm 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "llm 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": " llm 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "llm 2": {
+      "main": [
+        [
+          {
+            "node": "Merge llm 1 and llm 2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge llm 1 and llm 2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    " llm 3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "fetch title and post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch title and post": {
+      "main": [
+        [
+          {
+            "node": "Message a model2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model2": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ce8416e6-10a4-4e01-b8de-b57694f25786",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4306e70b083c6bcc631356a1c77c482544fffcad9ea683aa595a106b95ba8b27"
+  },
+  "id": "MPF2fS4M9HxwJSLK",
+  "tags": []
+}
