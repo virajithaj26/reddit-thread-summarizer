@@ -104,12 +104,9 @@ The Orchestrator Workflow ensures every subflow executes in order and handles fa
 
 **Responsibilities:**
 
-- Implement **token-aware chunking** for long comment threads\
-- Control the execution order of subflows\
-- Validate and handle malformed Reddit URLs\
-- Retry failed API calls automatically\
-- Log workflow execution results for monitoring\
-- Prevent partial or incomplete summaries from being sent\
+- Implement **token-aware chunking** for long comment threads
+- - Prevent partial or incomplete summaries from being sent
+- Control the execution order of subflows
 
 ---
 
@@ -149,3 +146,23 @@ Google Sheets Logging:
 
 
 [Workflow execution](https://drive.google.com/file/d/1jtWqOUhfS0k7d-ZElRkvakD5uAVjg3Yf/view?usp=sharing)
+
+
+
+[Presentation](https://www.canva.com/design/DAG3XHdc91M/ZD8kwTbHUea7u0xs5I3Bzw/edit?utm_content=DAG3XHdc91M&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
+
+## ✨ **How to Use the Bot**
+
+1. **Open the bot on Telegram**  
+   👉 https://t.me/reddit_thread_summarizer_bot
+
+2. **Paste a Reddit URL in the chat**  
+   Example: 
+   https://www.reddit.com/r/technology/comments/abcd123/some_reddit_post/
+
+3. **Wait a few seconds ⏳**  
+The bot will fetch the post and comments.
+
+4. ✅ **You will receive:**  
+- 📌 **Post Summary**
+- 💬 **Comment Summary (thread insights)**
