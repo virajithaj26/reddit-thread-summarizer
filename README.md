@@ -166,3 +166,107 @@ The bot will fetch the post and comments.
 4. ✅ **You will receive:**  
 - 📌 **Post Summary**
 - 💬 **Comment Summary (thread insights)**
+
+## ⚙️ **Setup Instructions**
+
+### 1\. Import the Workflow
+
+-   **Download:** `reddit thread summarizer.json`
+
+-   In **n8n**, go to **Import from File** → select the downloaded JSON file.
+
+-   After import, **enable all Webhook URLs**.
+
+-   Open the workflow and configure credentials for:
+
+    -   **Telegram Trigger / Telegram Send Message**
+
+    -   **Reddit API**
+
+    -   **Google Sheets**
+
+* * * * *
+
+### 2\. Configure Credentials
+
+#### 🧩 Reddit API
+
+-   Visit <https://www.reddit.com/prefs/apps>
+
+-   Login or create a Reddit account.
+
+-   Click **Create App** → choose **Script** type.
+
+-   Copy the generated **Client ID** and **Client Secret**.
+
+-   In n8n, create **Reddit credentials** using:
+
+    -   **Client ID**
+
+    -   **Client Secret**
+
+    -   **Username**
+
+    -   **Password**
+
+    -   **User Agent** (e.g., `n8n:reddit_summarizer:v1.0`)
+
+* * * * *
+
+#### 📊 Google Sheets Integration
+
+-   Create a new Google Sheet named **`automated_thread_summarizer`**.
+
+-   Add the following columns:
+
+    -   `Date`
+
+    -   `Post Title`
+
+    -   `subreddit`
+
+    -   `Thread Summary`
+
+-   In **n8n**, connect **Google Sheets credentials** using OAuth2.
+
+-   Once linked, these columns will automatically appear in the **Google Sheets node** for mapping data fields from the workflow.
+
+* * * * *
+
+#### 💬 Telegram Bot Setup
+
+-   Open Telegram and search for **@BotFather**.
+
+-   Use the command `/newbot` to create a new bot and get your **Bot Token**.
+
+-   Paste the **Bot Token** into:
+
+    -   **Telegram Trigger** node
+
+    -   **Telegram Send Message** node
+
+-   Use your **personal chat ID** or **group ID** to receive messages from the bot.
+
+* * * * *
+
+### 3\. Workflow Configuration
+
+1.  **Trigger:** Telegram message containing a Reddit post link.
+
+2.  **Fetch:** Reddit API node retrieves the post and its top comments.
+
+3.  **Summarize:** JavaScript or AI node condenses long discussion threads.
+
+4.  **Log:** Google Sheets node appends a new row for each summary.
+
+5.  **Respond:** Telegram Send node delivers the summarized thread to the user.
+
+* * * * *
+
+### 4\. Test the Workflow
+
+1.  Send a Reddit link to your Telegram bot.
+
+2.  Observe n8n fetch and summarize the thread.
+
+3.  You'll receive the summarized post in Telegram, and a new row will appear in Google Sheets.
